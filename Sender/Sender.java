@@ -16,7 +16,7 @@ public class Sender {
       int rcv_data_port = Integer.parseInt(args[1]);
       int sender_ack_port = Integer.parseInt(args[2]);
       String input_file = args[3];
-      int timeout = Integer.parseInt(args[4]);
+      int timeout = Integer.parseInt(args[4]); // in milliseconds
   
       int window_size = 1; // default for STOP-N-WAIT
       // if its GO-BACK-N (6 arguments provided)
@@ -26,7 +26,8 @@ public class Sender {
     } catch (NumberFormatException e) {
         System.err.println("Bad numeric argument: " + e.getMessage());
     } catch (IOException ioe) {
-        System.err.println("Could not start server on port " + port + ": " + ioe.getMessage());
+        System.err.println(ioe.getMessage());
     }
   }
 }
+
