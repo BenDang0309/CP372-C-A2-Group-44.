@@ -6,8 +6,8 @@ public class Sender {
   public static void main(String[] args) throws Exception {
     // java Sender <rcv_ip> <rcv_data_port> <sender_ack_port> <input_file> <timeout_ms> <window_size>
     // window_size controls how many DATA packets can be unacknowledged at once
-    if (args.length != 6) {
-      System.err.println("the format is java Sender <rcv_ip> <rcv_data_port> <sender_ack_port> <input_file> <timeout_ms> <window_size>");
+    if (args.length != 5 && args.length != 6) {
+      System.err.println("the format is java Sender <rcv_ip> <rcv_data_port> <sender_ack_port> <input_file> <timeout_ms> <window_size> with an optional window size.");
       System.exit(1);
     }
 
@@ -18,19 +18,30 @@ public class Sender {
     int timeoutMs;
     int windowSize;
 
+    // only exists to prevent a window size input of 1 from the user (must be multiples of 4, according to specifications) 
+    // while simultaneously allowing stop-and-wait to give windowSize a value of 1
+    boolean SaW = false;
+
     try {
       rcvDataPort = Integer.parseInt(args[1]);
       senderAckPort = Integer.parseInt(args[2]);
       inputFile = args[3];
       timeoutMs = Integer.parseInt(args[4]);
-      windowSize = Integer.parseInt(args[5]);
+      if (args.length == 6) {
+        // go-back-n
+        windowSize = Integer.parseInt(args[5]);
+      } else {
+        // stop-and-wait (if window size is 1, then its functionally identical to go-back-n)
+        windowSize = 1;
+        SaW = true;
+      }
     } catch (NumberFormatException e) {
       System.err.println("Bad numeric argument: " + e.getMessage());
       System.exit(1);
       return;
     }
 
-    if (windowSize <= 0 || windowSize > 128 || (windowSize % 4 != 0)) {
+    if (windowSize <= 0 || windowSize > 128 || (!SaW && windowSize % 4 != 0)) {
       System.err.println("Invalid window size. Must be a multiple of 4 and <= 128.");
       System.exit(1);
     }
@@ -92,8 +103,9 @@ public class Sender {
     }
 
     // -------------------------
-    // Phase 2: Data Transfer (GBN)
+    // Phase 2: Data Transfer 
     // -------------------------
+      
     int baseIndex = 0; // oldest unACKed data packet index
     int nextIndex = 0; // next data packet index to send
 
@@ -104,9 +116,11 @@ public class Sender {
       // Fill window with new transmissions.
       // New DATA packets are sent in groups of four and permuted by the ChaosEngine to force reordering
       while (nextIndex < numData && (nextIndex - baseIndex) < windowSize) {
-        int groupEnd = Math.min(nextIndex + 4, numData);
-        List<DSPacket> group = new ArrayList<>(groupEnd - nextIndex);
-        for (int i = nextIndex; i < groupEnd; i++) {
+        int remainingWindow = windowSize - (nextIndex - baseIndex); // just in case ACK pushes index into a value that isn't a multiple of 4
+        int groupSize = Math.min(4, Math.max(0, remainingWindow));
+        int  = Math.min(nextIndex + groupSize, numData);
+        List<DSPacket> group = new ArrayList<>( - nextIndex);
+        for (int i = nextIndex; i < ; i++) {
           group.add(dataPackets.get(i));
         }
 
@@ -115,7 +129,7 @@ public class Sender {
           sendData(socket, rcvIp, rcvDataPort, p, false);
         }
 
-        nextIndex = groupEnd;
+        nextIndex = ;
       }
 
       try {
@@ -242,9 +256,9 @@ public class Sender {
   ) throws IOException {
     int i = baseIndex;
     while (i < nextIndex) {
-      int groupEnd = Math.min(i + 4, nextIndex);
-      List<DSPacket> group = new ArrayList<>(groupEnd - i);
-      for (int j = i; j < groupEnd; j++) {
+      int  = Math.min(i + 4, nextIndex);
+      List<DSPacket> group = new ArrayList<>( - i);
+      for (int j = i; j < ; j++) {
         group.add(dataPackets.get(j));
       }
 
@@ -253,7 +267,7 @@ public class Sender {
         sendData(socket, ip, port, p, true);
       }
 
-      i = groupEnd;
+      i = ;
     }
   }
 
