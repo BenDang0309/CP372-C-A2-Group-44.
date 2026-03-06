@@ -19,7 +19,7 @@ public class Sender {
     int windowSize;
 
     // only exists to prevent a window size input of 1 from the user (must be multiples of 4, according to specifications) 
-    // while simultaneously allowing stop-and-wait to give windowSize a value of 1
+    // while simultaneously allowing step-and-wait to give windowSize a value of 1
     boolean SaW = false;
 
     try {
@@ -31,7 +31,7 @@ public class Sender {
         // go-back-n
         windowSize = Integer.parseInt(args[5]);
       } else {
-        // stop-and-wait (if window size is 1, then its functionally identical to go-back-n)
+        // step-and-wait (if window size is 1, then its functionally identical to go-back-n)
         windowSize = 1;
         SaW = true;
       }
