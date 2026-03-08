@@ -150,6 +150,11 @@ public class Sender {
           baseIndex += (dist + 1);
           timeoutsForSameBase = 0;
           lastBaseIndex = baseIndex;
+        } else if (outstanding == 1 && dist == 1) {
+          // Stale ACK with seq = baseSeq+1 (e.g. ACK 4 when waiting for 3 after wrap): treat as ack for current packet.
+          baseIndex += 1;
+          timeoutsForSameBase = 0;
+          lastBaseIndex = baseIndex;
         } else {
           timeoutsForSameBase = 0;
           System.out.println("Received ACK seq=" + ackSeq + " (no advance), retransmitting window from base seq=" + baseSeq);
