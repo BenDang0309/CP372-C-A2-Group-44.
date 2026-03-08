@@ -118,9 +118,9 @@ public class Sender {
       while (nextIndex < numData && (nextIndex - baseIndex) < windowSize) {
         int remainingWindow = windowSize - (nextIndex - baseIndex); // just in case ACK pushes index into a value that isn't a multiple of 4
         int groupSize = Math.min(4, Math.max(0, remainingWindow));
-        int  = Math.min(nextIndex + groupSize, numData);
-        List<DSPacket> group = new ArrayList<>( - nextIndex);
-        for (int i = nextIndex; i < ; i++) {
+        int endIndex = Math.min(nextIndex + groupSize, numData);
+        List<DSPacket> group = new ArrayList<>(endIndex - nextIndex);
+        for (int i = nextIndex; i < endIndex; i++) {
           group.add(dataPackets.get(i));
         }
 
@@ -129,7 +129,7 @@ public class Sender {
           sendData(socket, rcvIp, rcvDataPort, p, false);
         }
 
-        nextIndex = ;
+        nextIndex = endIndex;
       }
 
       try {
@@ -150,6 +150,15 @@ public class Sender {
           baseIndex += (dist + 1);
           timeoutsForSameBase = 0;
           lastBaseIndex = baseIndex;
+        } else if (outstanding == 1 && dist == 1) {
+          // Stale ACK with seq = baseSeq+1 (e.g. ACK 4 when waiting for 3 after wrap): treat as ack for current packet.
+          baseIndex += 1;
+          timeoutsForSameBase = 0;
+          lastBaseIndex = baseIndex;
+        } else {
+          timeoutsForSameBase = 0;
+          System.out.println("Received ACK seq=" + ackSeq + " (no advance), retransmitting window from base seq=" + baseSeq);
+          retransmitWindow(socket, rcvIp, rcvDataPort, dataPackets, baseIndex, nextIndex);
         }
       } catch (SocketTimeoutException ste) {
         if (baseIndex == lastBaseIndex) {
@@ -256,9 +265,9 @@ public class Sender {
   ) throws IOException {
     int i = baseIndex;
     while (i < nextIndex) {
-      int  = Math.min(i + 4, nextIndex);
-      List<DSPacket> group = new ArrayList<>( - i);
-      for (int j = i; j < ; j++) {
+      int endIndex = Math.min(i + 4, nextIndex);
+      List<DSPacket> group = new ArrayList<>(endIndex - i);
+      for (int j = i; j < endIndex; j++) {
         group.add(dataPackets.get(j));
       }
 
@@ -267,7 +276,7 @@ public class Sender {
         sendData(socket, ip, port, p, true);
       }
 
-      i = ;
+      i = endIndex;
     }
   }
 
@@ -308,3 +317,4 @@ public class Sender {
   }
 }
 
+  
