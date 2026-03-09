@@ -5,7 +5,6 @@ import java.util.*;
 public class Sender {
   public static void main(String[] args) throws Exception {
     // java Sender <rcv_ip> <rcv_data_port> <sender_ack_port> <input_file> <timeout_ms> <window_size>
-    // window_size controls how many DATA packets can be unacknowledged at once
     if (args.length != 5 && args.length != 6) {
       System.err.println("the format is java Sender <rcv_ip> <rcv_data_port> <sender_ack_port> <input_file> <timeout_ms> <window_size> with an optional window size.");
       System.exit(1);
@@ -18,8 +17,7 @@ public class Sender {
     int timeoutMs;
     int windowSize;
 
-    // only exists to prevent a window size input of 1 from the user (must be multiples of 4, according to specifications) 
-    // while simultaneously allowing stop-and-wait to give windowSize a value of 1
+   
     boolean SaW = false;
 
     try {
@@ -28,10 +26,10 @@ public class Sender {
       inputFile = args[3];
       timeoutMs = Integer.parseInt(args[4]);
       if (args.length == 6) {
-        // go-back-n
+        // go back n
         windowSize = Integer.parseInt(args[5]);
       } else {
-        // stop-and-wait (if window size is 1, then its functionally identical to go-back-n)
+        // stop and wait 
         windowSize = 1;
         SaW = true;
       }
@@ -58,9 +56,8 @@ public class Sender {
 
     long startNs = System.nanoTime();
 
-    // -------------------------
-    // Phase 1: Handshake (SOT)
-    // -------------------------
+    
+    // Handshake phase (SOT)
     sendControl(socket, rcvIp, rcvDataPort, new DSPacket(DSPacket.TYPE_SOT, 0, null), "SOT");
     System.out.println("Sent SOT seq=0");
 
@@ -85,11 +82,9 @@ public class Sender {
       }
     }
 
-    // -------------------------
-    // Empty file case: EOT seq=1
-    // -------------------------
-
-    // If there is no data to send, immediately send an EOT control packet and finish
+    
+    // Empty file case (EOT seq=1)
+    // If there is no data to send, send EOT control packet and finish
     if (numData == 0) {
       if (!sendEotAndAwaitAck(socket, rcvIp, rcvDataPort, eotSeq, timeoutMs)) {
         socket.close();
@@ -102,10 +97,8 @@ public class Sender {
       return;
     }
 
-    // -------------------------
-    // Phase 2: Data Transfer 
-    // -------------------------
-      
+    
+    // Data Transfer phase       
     int baseIndex = 0; // oldest unACKed data packet index
     int nextIndex = 0; // next data packet index to send
 
@@ -114,9 +107,8 @@ public class Sender {
 
     while (baseIndex < numData) {
       // Fill window with new transmissions.
-      // New DATA packets are sent in groups of four and permuted by the ChaosEngine to force reordering
       while (nextIndex < numData && (nextIndex - baseIndex) < windowSize) {
-        int remainingWindow = windowSize - (nextIndex - baseIndex); // just in case ACK pushes index into a value that isn't a multiple of 4
+        int remainingWindow = windowSize - (nextIndex - baseIndex); 
         int groupSize = Math.min(4, Math.max(0, remainingWindow));
         int endIndex = Math.min(nextIndex + groupSize, numData);
         List<DSPacket> group = new ArrayList<>(endIndex - nextIndex);
@@ -141,7 +133,7 @@ public class Sender {
         int ackSeq = ack.getSeqNum();
         System.out.println("Received ACK seq=" + ackSeq);
 
-        // Cumulative ACK: move baseIndex forward if ACK is within outstanding range.
+        // Cumulative ACK
         int baseSeq = dataPackets.get(baseIndex).getSeqNum();
         int outstanding = nextIndex - baseIndex;
 
@@ -151,7 +143,7 @@ public class Sender {
           timeoutsForSameBase = 0;
           lastBaseIndex = baseIndex;
         } else if (outstanding == 1 && dist == 1) {
-          // Stale ACK with seq = baseSeq+1 (e.g. ACK 4 when waiting for 3 after wrap): treat as ack for current packet.
+          // Stale ACK with seq = baseSeq+1
           baseIndex += 1;
           timeoutsForSameBase = 0;
           lastBaseIndex = baseIndex;
@@ -179,26 +171,21 @@ public class Sender {
       }
     }
 
-    // -------------------------
-    // Phase 3: Teardown (EOT)
-    // -------------------------
-    // Signal to the receiver that no more DATA packets will be sent and wait  
-    // for a final ACK on the EOT sequence number before declaring success.
+    
+    // Teardown Phase (EOT)
     if (!sendEotAndAwaitAck(socket, rcvIp, rcvDataPort, eotSeq, timeoutMs)) {
       socket.close();
       return;
     }
 
-    // At this point the receiver has ACKed EOT, so the transfer is complete and
-    // the total application-level transmission time can be reported.
+    //Report total transmission time.
     double seconds = (System.nanoTime() - startNs) / 1_000_000_000.0;
     System.out.printf("Total Transmission Time: %.2f seconds%n", seconds);
 
     socket.close();
   }
 
-  // Build a list of DATA packets from the input file, assigning sequence
-  // numbers starting at 1 and incrementing modulo 128 for each payload chunk.
+  // Build a list of DATA packets from the input file
   private static List<DSPacket> buildDataPackets(String inputFile) throws IOException {
     List<DSPacket> packets = new ArrayList<>();
 
@@ -207,8 +194,7 @@ public class Sender {
       throw new FileNotFoundException("Input file not found: " + inputFile);
     }
 
-    // Read the entire file using a fixed-size buffer matching the maximum
-    // protocol payload so every DATA packet respects the 124-byte limit.
+    // Read the entire file using a fixed-size buffer matching the maximum protocol payload
     try (FileInputStream fis = new FileInputStream(f)) {
       byte[] buf = new byte[DSPacket.MAX_PAYLOAD_SIZE];
       int read;
@@ -217,7 +203,6 @@ public class Sender {
         if (read == 0) {
           continue;
         }
-        // Copy exactly the bytes read into a right-sized payload array for this DATA packet.
         byte[] payload = Arrays.copyOf(buf, read);
         packets.add(new DSPacket(DSPacket.TYPE_DATA, seq, payload));
         seq = (seq + 1) % 128;
@@ -249,7 +234,7 @@ public class Sender {
   }
 
 
-  // Block until the next 128-byte UDP datagram arrives, then parse it into a DSPacket.
+  // Helper function to lock until the next 128-byte UDP datagram arrives, then parse it into a DSPacket.
   private static DSPacket receivePacket(DatagramSocket socket) throws IOException {
     byte[] buf = new byte[DSPacket.MAX_PACKET_SIZE];
     DatagramPacket dp = new DatagramPacket(buf, buf.length);
@@ -257,9 +242,7 @@ public class Sender {
     return new DSPacket(dp.getData());
   }
 
-  // Retransmit all outstanding DATA packets in the current window, starting
-  // from baseIndex up to (but not including) nextIndex, again using the
-  // ChaosEngine permutation for each group of four.
+  // Helper function Retransmit all outstanding DATA packets in the current window
   private static void retransmitWindow( DatagramSocket socket, InetAddress ip, 
   int port, List<DSPacket> dataPackets, int baseIndex, int nextIndex
   ) throws IOException {
@@ -280,8 +263,7 @@ public class Sender {
     }
   }
 
-  // Send a single EOT control packet and wait for its matching ACK, retrying
-  // on timeout up to three times before giving up and signalling failure.
+  // Send a single EOT control packet and wait for its matching ACK, retrying on timeout up to three times before giving up and signalling failure.
   private static boolean sendEotAndAwaitAck(DatagramSocket socket, InetAddress ip, int port, int eotSeq, int timeoutMs)
       throws IOException {
     DSPacket eot = new DSPacket(DSPacket.TYPE_EOT, eotSeq, null);
@@ -310,8 +292,7 @@ public class Sender {
     }
   }
 
-  // Compute the forward distance from one sequence number to another in the
-  // modulo-128 space used by the protocol for all wrap-around comparisons.
+  // Function to compute the forward distance
   private static int modDistance(int fromSeq, int toSeq) {
     return (toSeq - fromSeq + 128) % 128;
   }

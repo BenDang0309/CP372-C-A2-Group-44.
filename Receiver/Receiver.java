@@ -4,8 +4,7 @@ import java.util.*;
 
 public class Receiver {
   public static void main(String[] args) throws Exception {
-    // format is java Receiver <sender_ip> <sender_ack_port> <rcv_data_port> <output_file> <RN>
-    // RN controls how frequently ACK packets are intentionally dropped for testing reliability
+    // format: java Receiver <sender_ip> <sender_ack_port> <rcv_data_port> <output_file> <RN>
     if (args.length != 5) {
       System.err.println("the format is java Receiver <sender_ip> <sender_ack_port> <rcv_data_port> <output_file> <RN>");
       System.exit(1); // unsuccessful termination
@@ -31,22 +30,16 @@ public class Receiver {
     DatagramSocket socket = new DatagramSocket(rcvDataPort);
 
     // Receiver-side GBN buffering (cumulative ACKs).
-    // Note: Receiver CLI does not provide N; we buffer conservatively up to full sequence space.
-    // The receiver only delivers bytes to the file once all earlier sequence numbers have arrived
     final int windowSize = 128;
 
     Map<Integer, byte[]> buffer = new HashMap<>();
     int expectedSeq = 1;
     int lastCumulativeAck = 0;
 
-    int ackCount = 0; // intended ACKs, 1-indexed for ChaosEngine.shouldDrop
-
+    int ackCount = 0; 
     try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-      // -------------------------
-      // Phase 1: Handshake (SOT)
-      // -------------------------
-      // Waits for the sender's SOT control packet and replies with a single ACK seq=0
-      while (true) {
+      // Handshake phase (SOT)
+            while (true) {
         DSPacket pkt = receivePacket(socket);
         if (pkt.getType() == DSPacket.TYPE_SOT && pkt.getSeqNum() == 0) {
           System.out.println("Received SOT seq=0");
@@ -59,10 +52,7 @@ public class Receiver {
       sendAckWithChaos(socket, senderIp, senderAckPort, 0, ackCount, rn);
       System.out.println("Handshake success");
 
-      // -------------------------
-      // Phase 2: Data Transfer
-      // -------------------------
-      // Accepts DATA packets, buffers out-of-order ones, and sends cumulative ACKs for the last in-order seq
+      // Data Transfer phase
       while (true) {
         DSPacket pkt = receivePacket(socket);
         int type = pkt.getType();
@@ -89,12 +79,12 @@ public class Receiver {
             ackCount++;
             sendAckWithChaos(socket, senderIp, senderAckPort, lastCumulativeAck, ackCount, rn);
           } else {
-            // Out of window: discard and re-send last cumulative ACK.
+            // Out of window
             ackCount++;
             sendAckWithChaos(socket, senderIp, senderAckPort, lastCumulativeAck, ackCount, rn);
           }
         } else if (type == DSPacket.TYPE_EOT) {
-          // Phase 3 teardown: sender is finished sending file data and is closing the session
+          // teardown phase
           System.out.println("Received EOT seq=" + seq);
 
           // Acknowledge the EOT so the sender can stop retransmitting and record completion time
@@ -115,6 +105,7 @@ public class Receiver {
     }
   }
 
+  //Block until a packet is received; return it as a DSPacket.
   private static DSPacket receivePacket(DatagramSocket socket) throws IOException {
     byte[] buf = new byte[DSPacket.MAX_PACKET_SIZE];
     DatagramPacket dp = new DatagramPacket(buf, buf.length);
@@ -122,6 +113,7 @@ public class Receiver {
     return new DSPacket(dp.getData());
   }
 
+  //Send ACK for ackSeq to sender
   private static void sendAckWithChaos(
       DatagramSocket socket,
       InetAddress senderIp,
@@ -142,6 +134,7 @@ public class Receiver {
     System.out.println("Sent ACK seq=" + ackSeq);
   }
 
+  // # of steps from fromSeq to toSeq in mod-128 space.
   private static int modDistance(int fromSeq, int toSeq) {
     return (toSeq - fromSeq + 128) % 128;
   }
